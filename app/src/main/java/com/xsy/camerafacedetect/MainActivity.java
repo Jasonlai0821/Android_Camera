@@ -13,7 +13,6 @@ import android.hardware.Camera;
 import android.hardware.Camera.Face;
 import android.hardware.Camera.Parameters;
 import android.hardware.Camera.CameraInfo;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -36,8 +35,8 @@ public class MainActivity extends AppCompatActivity implements Camera.PreviewCal
     private int mNumberOfCamera =0;
     private RectF mRect = new RectF();
     private Matrix mMatrix = new Matrix();
-    private int mWidth = 0;
-    private int mHeight = 0;
+    private int mWidth = 0;//屏幕宽度
+    private int mHeight = 0;//屏幕高度
     private MainHandler mHandler;
     private int cur_point = 100; //舵机旋转的当前角度
     private int orientation = 1; //1:代表向下转动，-1：代表向上转动
@@ -66,20 +65,10 @@ public class MainActivity extends AppCompatActivity implements Camera.PreviewCal
     @Override
     protected void onStart() {
         super.onStart();
-        //initCamera();
         Log.d(TAG,"onStart");
         initAngle();
         initCamera();
-
-        Rect outSize = new Rect();
-        getWindowManager().getDefaultDisplay().getRectSize(outSize);
-        int left = outSize.left;
-        int top = outSize.top;
-        int right = outSize.right;
-        int bottom = outSize.bottom;
-        mWidth = right - left;
-        mHeight = bottom - top;
-        Log.d(TAG, "left = " + left + ",top = " + top + ",right = " + right + ",bottom = " + bottom);
+        getWidthHeight();
         mHandler = new MainHandler();
     }
 
@@ -104,6 +93,13 @@ public class MainActivity extends AppCompatActivity implements Camera.PreviewCal
         mSurfaceView.getHolder().addCallback(this);
     }
 
+    private void getWidthHeight()
+    {
+        Rect outSize = new Rect();
+        getWindowManager().getDefaultDisplay().getRectSize(outSize);
+        mWidth = outSize.right - outSize.left;
+        mHeight = outSize.bottom - outSize.top;
+    }
 
     @Override
     public void onPreviewFrame(byte[] data, Camera camera) {
@@ -192,11 +188,7 @@ public class MainActivity extends AppCompatActivity implements Camera.PreviewCal
 
         @Override
         public void onFaceDetection(Face[] faces, Camera camera) {
-            Log.d(TAG,"onFaceDetection");
             if(faces == null || faces.length == 0){
-                Log.d(TAG,"onFaceDetection not detect face!!!");
-
-                //mHandler.removeMessages(EVENT_NOTDETECT_FACE);
                 Message m = mHandler.obtainMessage();
                 m.what = EVENT_NOTDETECT_FACE;
                 m.obj = faces;
@@ -208,8 +200,6 @@ public class MainActivity extends AppCompatActivity implements Camera.PreviewCal
                     mHandler.sendMessage(m);
                 }
             }else{
-                Log.d(TAG, "onFaceDetection detect face:"+faces.length);
-
                 mHandler.removeMessages(EVENT_NOTDETECT_FACE);
                 Message m = mHandler.obtainMessage();
                 m.what = EVENT_DETECT_FACE;
@@ -219,27 +209,11 @@ public class MainActivity extends AppCompatActivity implements Camera.PreviewCal
         }
     }
 
-    private void seekFaceAngle()
-    {
-        if(cur_point >= 135 && orientation == 1){
-            orientation = -1;
-        }else if(cur_point <= 45 && orientation == -1){
-            orientation = 1;
-        }
-        cur_point += (orientation) * 2;
-        AngleHelper.angle(cur_point);
-        try {
-            Thread.currentThread().sleep(200);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
 
     class MainHandler extends Handler {
         @Override
         public void handleMessage(Message msg) {
             Face[] faces = (Face[]) msg.obj;
-            Log.d(TAG, "handleMessage msg.what:"+msg.what);
             switch(msg.what){
                 case EVENT_NOTDETECT_FACE:
                     processAngle(0,0);
@@ -253,7 +227,6 @@ public class MainActivity extends AppCompatActivity implements Camera.PreviewCal
 
             }
             // TODO Auto-generated method stub
-
             super.handleMessage(msg);
         }
     }
@@ -264,6 +237,7 @@ public class MainActivity extends AppCompatActivity implements Camera.PreviewCal
         AngleHelper.angle(cur_point);
     }
 
+    //根据最高位置和最低位置调整舵机角度
     private void processAngle(int mintop,int maxbtm)
     {
         int first_level = mHeight / 4;
@@ -273,16 +247,13 @@ public class MainActivity extends AppCompatActivity implements Camera.PreviewCal
         int mid_point = (mintop + maxbtm) / 2;
 
         if(mid_point > first_level && mid_point < second_level){
-            Log.d(TAG,"mid_point:"+mid_point);
             if(isFindFace == true){
                 orientation *= -1;
             }
             if(mid_point < mid_level){
                 int len = mid_level - mid_point;
-                Log.d(TAG,"len:"+len+" before cur_point:"+cur_point);
                 int angle =len * 10 / mHeight;
                 cur_point -= angle;
-                Log.d(TAG,"len:"+len+" after cur_point:"+cur_point);
                 AngleHelper.angle(cur_point);
                 try {
                     mHandler.removeMessages(EVENT_DETECT_FACE);
@@ -292,11 +263,9 @@ public class MainActivity extends AppCompatActivity implements Camera.PreviewCal
                 }
             }else{
                 int len = mid_point - mid_level;
-                Log.d(TAG,"len:"+len+" before cur_point:"+cur_point);
                 int angle =len *10 / mHeight;
 
                 cur_point += angle;
-                Log.d(TAG,"len:"+len+" after cur_point:"+cur_point);
                 AngleHelper.angle(cur_point);
                 try {
                     mHandler.removeMessages(EVENT_DETECT_FACE);
@@ -330,21 +299,12 @@ public class MainActivity extends AppCompatActivity implements Camera.PreviewCal
         int mMintop = mHeight /2;
         int mMaxbottom = mHeight /2;
 
-        for (int i = 0; i < faces.length; i++) {
-            int left = faces[i].rect.left;
-            int top = faces[i].rect.top;
-            int right = faces[i].rect.right;
-            int bottom = faces[i].rect.bottom;
-            Log.d(TAG, "face[" + i + "]" + " = [" + left + "," + top + "," + right + "," + bottom + "]");
-
+        for (int i = 0; i < faces.length; i++) {//获取人脸数组中最高位置和最低位置
             mRect.set(faces[i].rect);
             mMatrix.mapRect(mRect);
 
-            int mleft = Math.round(mRect.left);
             int mtop = Math.round(mRect.top);
-            int mright = Math.round(mRect.right);
             int mbottom = Math.round(mRect.bottom);
-            Log.d(TAG, "After Map face[" + i + "]" + " = [" + mleft + "," + mtop + "," + mright + "," + mbottom + "]");
             if(mMintop > mtop){
                 mMintop = mtop;
             }
